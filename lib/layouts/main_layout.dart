@@ -1,0 +1,368 @@
+import 'package:flutter/material.dart';
+import 'package:im3_mobile_app/pages/news/news_page.dart';
+import 'package:im3_mobile_app/pages/notices/notices_page.dart';
+import 'package:im3_mobile_app/pages/password/password_page.dart';
+import 'package:im3_mobile_app/pages/perfil/perfil_page.dart';
+import 'package:im3_mobile_app/pages/vacaciones/vacaciones_page.dart';
+import 'package:im3_mobile_app/pages/widgets/scroll_to_top.dart';
+
+import '../pages/im3horas/im3horas_page.dart';
+import '../pages/home/home_page.dart';
+import '../pages/login/login_page.dart';
+import '../pages/nominas/nominas_page.dart';
+import '../pages/permisos/permisos_page.dart';
+import '../services/auth_service.dart';
+import '../theme/theme.dart';
+
+/// Layout compartido por todas las pantallas internas:
+///   - Izquierda: botón del menú lateral
+///   - Centro: logo de la empresa
+///   - Derecha: cerrar sesión
+///
+/// Cada vez que se abre una pantalla con este layout, se valida el token.
+///
+/// Uso en una página:
+///   return MainLayout(currentRoute: 'inicio', child: ...);
+class MainLayout extends StatefulWidget {
+  final Widget child;
+
+  /// Ruta actual, para marcar la opción del menú
+  final String currentRoute;
+
+  const MainLayout({
+    super.key,
+    required this.child,
+    required this.currentRoute,
+  });
+
+  @override
+  State<MainLayout> createState() => _MainLayoutState();
+}
+
+class _MainLayoutState extends State<MainLayout> {
+  /// Usuario tal cual está guardado (sin modelo)
+  Map<String, dynamic>? _user;
+
+  // =========================================================
+  // MENÚ: para añadir una pantalla, añade una entrada aquí
+  // =========================================================
+  static final List<Map<String, dynamic>> _menu = [
+    // Trabajo
+    {
+      'route': 'inicio',
+      'title': 'Inicio',
+      'icon': Icons.home_outlined,
+      'page': () => const HomePage(),
+    },
+    {
+      'route': 'im3horas',
+      'title': 'IM3 Horas',
+      'icon': Icons.access_time,
+      'page': () => Im3HorasPage(),
+    },
+    {
+      'route': 'vacaciones',
+      'title': 'Vacaciones',
+      'icon': Icons.beach_access_outlined,
+      'page': () => const VacacionesPage(),
+    },
+    {
+      'route': 'permisos',
+      'title': 'Permisos',
+      'icon': Icons.event_note_outlined,
+      'page': () => const PermisosPage(),
+    },
+    {
+      'route': 'nominas',
+      'title': 'Nóminas',
+      'icon': Icons.receipt_long_outlined,
+      'page': () => const NominasPage(),
+    },
+
+    // Información
+    {
+      'route': 'comunicados',
+      'title': 'Comunicados',
+      'icon': Icons.campaign_outlined,
+      'page': () => const NoticesPage(),
+    },
+    {
+      'route': 'noticias',
+      'title': 'Noticias',
+      'icon': Icons.newspaper_outlined,
+      'page': () => const NewsPage(),
+    },
+
+    // Cuenta
+    {
+      'route': 'perfil',
+      'title': 'Mi perfil',
+      'icon': Icons.person_outline,
+      'page': () => const PerfilPage(),
+    },
+  ];
+
+  /// Opción fija abajo del menú, encima de "Cerrar sesión"
+  static final Map<String, dynamic> _passwordItem = {
+    'route': 'password',
+    'title': 'Cambiar contraseña',
+    'icon': Icons.lock_reset,
+    'page': () => const PasswordPage(),
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    // 1. Pintar con lo guardado (inmediato)
+    final user = await AuthService.getUser();
+    user?['id_user']; // id en la intranet
+    user?['id_sign']; // id en sign
+    user?['es_responsable'];
+    user?['dias_vacaciones_pendientes'];
+
+    if (mounted) setState(() => _user = user);
+
+    // 2. Validar el token en cada pantalla
+    final valid = await AuthService.validateToken();
+    if (!mounted) return;
+    if (!valid) {
+      await _sessionExpired();
+      return;
+    }
+
+    // 3. validateToken pudo actualizar los datos
+    final fresh = await AuthService.getUser();
+    if (mounted) setState(() => _user = fresh);
+  }
+
+  // =========================================================
+  // NAVEGACIÓN
+  // =========================================================
+  void _navigate(Map<String, dynamic> item) {
+    Navigator.pop(context); // cierra el menú
+    if (item['route'] == widget.currentRoute) return;
+
+    final builder = item['page'] as Widget Function();
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => builder(),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
+    );
+  }
+
+  void _goToLogin() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (route) => false,
+    );
+  }
+
+  // =========================================================
+  // SESIÓN
+  // =========================================================
+  Future<void> _confirmLogout() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cerrar sesión'),
+        content: const Text('¿Seguro que quieres cerrar sesión?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(foregroundColor: Colors.grey),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Cerrar sesión'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != true) return;
+    await AuthService.logout();
+    if (mounted) _goToLogin();
+  }
+
+  Future<void> _sessionExpired() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sesión cerrada'),
+        content: const Text(
+          'Tu sesión ha caducado o ya no tienes acceso. Inicia sesión de nuevo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+    if (mounted) _goToLogin();
+  }
+
+  // =========================================================
+  // UI
+  // =========================================================
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      drawer: _drawer(),
+
+      // HEADER
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 1,
+        shadowColor: Colors.black12,
+        centerTitle: true,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu),
+            color: AppColors.primary,
+            tooltip: 'Menú',
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
+        ),
+        title: Image.asset(
+          'assets/images/logo.png',
+          height: 32,
+          errorBuilder: (_, __, ___) => const Text(
+            'IM3',
+            style: TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            color: AppColors.danger,
+            tooltip: 'Cerrar sesión',
+            onPressed: _confirmLogout,
+          ),
+        ],
+      ),
+
+      // CONTENIDO DE CADA PÁGINA
+      // ScrollToTop: botón abajo a la derecha para volver arriba
+      body: SafeArea(child: ScrollToTop(child: widget.child)),
+    );
+  }
+
+  // ---------------- MENÚ LATERAL ----------------
+  Widget _drawer() {
+    final nombre =
+        _user?['user_full_name'] ?? _user?['fullname'] ?? _user?['name'] ?? '';
+    final email = _user?['email'] ?? '';
+
+    return Drawer(
+      backgroundColor: Colors.white,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Cabecera: logo + usuario
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Image.asset('assets/images/logo.png', height: 44),
+                  const SizedBox(height: 20),
+                  Text(
+                    nombre.toString(),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.text,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    email.toString(),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              height: 3,
+              width: 40,
+              margin: const EdgeInsets.only(left: 24),
+              color: AppColors.secondary,
+            ),
+            const SizedBox(height: 16),
+
+            // Opciones
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [for (final item in _menu) _item(item)],
+              ),
+            ),
+
+            // Abajo: cambiar contraseña + cerrar sesión
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: _item(_passwordItem),
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(Icons.logout, color: AppColors.danger),
+              title: const Text(
+                'Cerrar sesión',
+                style: TextStyle(color: AppColors.danger),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _confirmLogout();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _item(Map<String, dynamic> item) {
+    final selected = item['route'] == widget.currentRoute;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: ListTile(
+        selected: selected,
+        selectedTileColor: AppColors.primary,
+        selectedColor: Colors.white,
+        iconColor: AppColors.primary,
+        textColor: AppColors.text,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        leading: Icon(item['icon'] as IconData),
+        title: Text(
+          item['title'] as String,
+          style: TextStyle(
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        onTap: () => _navigate(item),
+      ),
+    );
+  }
+}
