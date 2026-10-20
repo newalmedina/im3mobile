@@ -1,6 +1,9 @@
 import '../config/api.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
 
 /// Llamadas de los bloques de la Home (los axios / store de la web).
 class HomeService {
@@ -396,4 +399,38 @@ class HomeService {
   /// Últimas noticias del usuario (getNews de la web)
   static Future<List<Map<String, dynamic>>> getNoticias({int cantidad = 3}) =>
       getPublicaciones(tipo: tipoNoticia, cantidad: cantidad);
+
+  /// Sube una foto nueva de perfil (info.vue en la web).
+  /// Va con bytes para que funcione igual en móvil y en Chrome.
+  static Future<bool> subirFotoPerfil(String id, XFile foto) async {
+    final bytes = await foto.readAsBytes();
+
+    final nombre = foto.name.isEmpty ? 'perfil.jpg' : foto.name;
+    final ext = nombre.contains('.')
+        ? nombre.split('.').last.toLowerCase()
+        : 'jpg';
+    final tipo = ext == 'png'
+        ? 'png'
+        : ext == 'webp'
+        ? 'webp'
+        : 'jpeg';
+
+    final res = await ApiService.postMultipart(
+      ApiConfig.fotoPerfil,
+      auth: true,
+      fields: {
+        if (ApiConfig.fotoPerfilCampoId.isNotEmpty)
+          ApiConfig.fotoPerfilCampoId: id,
+      },
+      archivos: [
+        http.MultipartFile.fromBytes(
+          ApiConfig.fotoPerfilCampo,
+          bytes,
+          filename: nombre,
+          contentType: MediaType('image', tipo),
+        ),
+      ],
+    );
+    return res['ok'] == true;
+  }
 }

@@ -148,4 +148,22 @@ class ApiConfig {
   // Carpeta de los archivos de documentación
   static const String homeDocumentosFiles =
       "${intranetBaseUrl}files/docs_wellcome/";
+
+  // =========================================================
+  // FOTO DE PERFIL (info.vue en la web, solo en tu propio perfil)
+  // =========================================================
+
+  // =========================================================
+  // FOTO DE PERFIL (info.vue en la web, solo en tu propio perfil)
+  // =========================================================
+
+  // POST multipart: id + imagen -> {filename}
+  static const String fotoPerfil =
+      "${intranetBaseUrl}api/api_files/v1/imagen_usuario";
+
+  /// Campo del archivo (formDataImg.append('imagen', file))
+  static const String fotoPerfilCampo = "imagen";
+
+  /// Campo del id del usuario (formDataImg.append('id', this.info.id))
+  static const String fotoPerfilCampoId = "id";
 }

@@ -6,6 +6,7 @@ import 'package:im3_mobile_app/pages/home/widgets/home_goals.dart';
 import 'package:im3_mobile_app/pages/home/widgets/home_incorporaciones.dart';
 import 'package:im3_mobile_app/pages/home/widgets/home_latest_news.dart';
 import 'package:im3_mobile_app/pages/home/widgets/home_notices.dart';
+import 'package:im3_mobile_app/pages/home/widgets/home_notificaciones.dart';
 import 'package:im3_mobile_app/pages/home/widgets/home_pinned.dart';
 import 'package:im3_mobile_app/pages/home/widgets/home_relojes.dart';
 
@@ -70,9 +71,17 @@ class _HomePageState extends State<HomePage> {
           ),
 
           // Reloj de los países: pestaña fija a la derecha, a media altura
-          const Align(
-            alignment: Alignment.centerRight,
-            child: HomeRelojBoton(),
+          // Notificaciones + reloj de los países, fijos a la derecha
+          Align(
+            alignment: Alignment.centerRight, // deja la alineación que tengas
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                HomeNotificacionesBoton(key: ValueKey('notif$_recarga')),
+                const SizedBox(height: 10),
+                const HomeRelojBoton(),
+              ],
+            ),
           ),
         ],
       ),

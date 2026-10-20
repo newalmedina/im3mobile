@@ -1,24 +1,27 @@
 import 'package:flutter/material.dart';
 
+import '../../services/plantillas_service.dart';
 import '../../theme/theme.dart';
 import '../../utils/horas_reglas.dart';
+import 'plantilla_editor_sheet.dart';
 
 /// Diálogo "Generar plantilla": deja elegir entre la plantilla normal
 /// y la de verano, desmarcar algún turno y valida en vivo antes de insertar.
+/// Con el lápiz se edita la plantilla y se guarda en el móvil.
 ///
 /// Devuelve la lista de turnos elegidos ([inicio, fin] en minutos)
 /// o null si se cancela.
 class PlantillaDialog extends StatefulWidget {
   final DateTime dia;
 
-  /// Turnos de la plantilla: false = normal, true = verano
-  final List<List<int>> Function(bool verano) plantillaDe;
+  /// Plantillas del usuario (o las de por defecto)
+  final Plantillas plantillas;
   final String? Function(List<List<int>> seleccion) validar;
 
   const PlantillaDialog({
     super.key,
     required this.dia,
-    required this.plantillaDe,
+    required this.plantillas,
     required this.validar,
   });
 
@@ -27,8 +30,9 @@ class PlantillaDialog extends StatefulWidget {
 }
 
 class _PlantillaDialogState extends State<PlantillaDialog> {
+  late Plantillas _plantillas = widget.plantillas;
   bool _verano = false;
-  late List<List<int>> _turnos = widget.plantillaDe(_verano);
+  late List<List<int>> _turnos = _plantillas.de(_verano);
   late List<bool> _marcados = List.filled(_turnos.length, true);
 
   List<List<int>> get _seleccion => [
@@ -39,16 +43,37 @@ class _PlantillaDialogState extends State<PlantillaDialog> {
   void _cambiarPlantilla(bool verano) {
     setState(() {
       _verano = verano;
-      _turnos = widget.plantillaDe(verano);
+      _turnos = _plantillas.de(verano);
       _marcados = List.filled(_turnos.length, true);
     });
   }
 
-  String get _descripcion {
-    if (_verano) return 'Horario de verano, igual todos los días';
-    return widget.dia.weekday == DateTime.friday
-        ? 'Horario de viernes'
-        : 'Horario de lunes a jueves';
+  String get _descripcion =>
+      _verano ? 'Tu horario de verano' : 'Tu horario normal';
+
+  /// Lápiz: editar la plantilla que se está viendo y guardarla
+  Future<void> _editar() async {
+    final tramos = await PlantillaEditorSheet.abrir(
+      context,
+      titulo: _verano ? 'Plantilla de verano' : 'Plantilla normal',
+      tramos: _plantillas.de(_verano),
+    );
+    if (tramos == null || !mounted) return;
+
+    try {
+      final nuevas = tramos.isEmpty
+          ? await PlantillasService.restablecer(_plantillas, _verano)
+          : _plantillas.con(_verano, tramos);
+      if (tramos.isNotEmpty) await PlantillasService.guardar(nuevas);
+      if (!mounted) return;
+      setState(() => _plantillas = nuevas);
+      _cambiarPlantilla(_verano);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo guardar la plantilla.')),
+      );
+    }
   }
 
   @override
@@ -93,8 +118,24 @@ class _PlantillaDialogState extends State<PlantillaDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(_descripcion, style: TextStyle(color: Colors.grey[700])),
-            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _descripcion,
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _editar,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                  ),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Editar'),
+                ),
+              ],
+            ),
             for (var i = 0; i < _turnos.length; i++)
               CheckboxListTile(
                 value: _marcados[i],

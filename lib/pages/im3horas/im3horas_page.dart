@@ -4,6 +4,7 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../layouts/main_layout.dart';
 import '../../services/horas_service.dart';
+import '../../services/plantillas_service.dart';
 import '../../theme/theme.dart';
 import '../../utils/horas_reglas.dart';
 import '../../widgets/snackbar_helper.dart';
@@ -200,11 +201,14 @@ class _Im3HorasPageState extends State<Im3HorasPage> {
   /// Botón "Generar plantilla": abre el diálogo y crea los turnos elegidos
   Future<void> _generarPlantilla() async {
     final dia = _seleccionado;
+    // Las del usuario o, si no ha guardado ninguna, las de por defecto
+    final plantillas = await PlantillasService.cargar();
+    if (!mounted) return;
     final seleccion = await showDialog<List<List<int>>>(
       context: context,
       builder: (_) => PlantillaDialog(
         dia: dia,
-        plantillaDe: (verano) => HorasReglas.plantilla(dia, verano: verano),
+        plantillas: plantillas,
         validar: (sel) => HorasReglas.validarVarios(
           dia: dia,
           nuevos: sel,

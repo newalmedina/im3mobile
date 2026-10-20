@@ -49,7 +49,7 @@ class ApiService {
   }) => _send('DELETE', endpoint, auth: auth);
 
   /// POST multipart/form-data, como el `new FormData()` de la web.
-  /// [fields]: campos de texto. [archivos]: archivos ya preparados.
+  /// [fields]: campos de texto. [archivos]: ficheros (fotos, adjuntos...).
   /// El token va en la cabecera "auth-token".
   static Future<Map<String, dynamic>> postMultipart(
     String endpoint, {
@@ -70,8 +70,10 @@ class ApiService {
     if (kDebugMode) {
       debugPrint('➡️ POST (multipart) $url');
       debugPrint('➡️ CAMPOS: ${jsonEncode(fields)}');
-      if (archivos.isNotEmpty) {
-        debugPrint('➡️ ARCHIVOS: ${archivos.map((f) => f.filename).toList()}');
+      for (final a in archivos) {
+        debugPrint(
+          '➡️ ARCHIVO: ${a.field} = ${a.filename} (${a.length} bytes)',
+        );
       }
     }
 
