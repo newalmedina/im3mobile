@@ -11,12 +11,16 @@ import 'package:im3_mobile_app/pages/home/widgets/home_pinned.dart';
 import 'package:im3_mobile_app/pages/home/widgets/home_relojes.dart';
 
 import '../../layouts/main_layout.dart';
+import '../../services/accesos_service.dart';
 import '../../theme/theme.dart';
 
 /// Pantalla de inicio. Equivalente a pages/index.vue de la web.
 ///
 /// Cada bloque es un widget independiente en `widgets/` que carga
 /// sus propios datos. Esta página solo los ordena y los recarga.
+///
+/// Los bloques que llevan a una sección con permiso van dentro de
+/// ConAcceso: si el usuario no tiene ese permiso, el bloque no se muestra.
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -31,14 +35,18 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refrescar() async {
     setState(() => _recarga++);
-    // Pequeña espera para que se vea el indicador de recarga
-    await Future.delayed(const Duration(milliseconds: 600));
+    // Al refrescar también se vuelven a pedir los permisos
+    await Future.wait([
+      AccesosService.refrescar(forzar: true),
+      // Pequeña espera para que se vea el indicador de recarga
+      Future.delayed(const Duration(milliseconds: 600)),
+    ]);
   }
 
   @override
   Widget build(BuildContext context) {
     return MainLayout(
-      currentRoute: 'home',
+      currentRoute: 'inicio',
       child: Stack(
         children: [
           RefreshIndicator(
@@ -52,28 +60,44 @@ class _HomePageState extends State<HomePage> {
                 // 1. Banner del concurso
                 HomeBanner(key: ValueKey('banner$_recarga')),
                 // 2. Destacado          -> Pinned
-                HomePinned(key: ValueKey('pinned$_recarga')),
+                ConAcceso(
+                  permiso: Acceso.noticias,
+                  child: HomePinned(key: ValueKey('pinned$_recarga')),
+                ),
 
                 // 4. Objetivos          -> Goals
-                HomeGoals(key: ValueKey('goals$_recarga')),
+                ConAcceso(
+                  permiso: Acceso.objetivos,
+                  child: HomeGoals(key: ValueKey('goals$_recarga')),
+                ),
                 // 5. Días sin accidentes -> DaysCounter
                 HomeDaysCounter(key: ValueKey('days$_recarga')),
-                // 6. Nuevas incorporaciones -> Incorporaciones
-                HomeIncorporaciones(key: ValueKey('incorporaciones$_recarga')),
+                // 6. Nuevas incorporaciones -> Incorporaciones (abre trabajadores)
+                ConAcceso(
+                  permiso: Acceso.trabajadores,
+                  child: HomeIncorporaciones(
+                    key: ValueKey('incorporaciones$_recarga'),
+                  ),
+                ),
                 // 7. Documentación      -> Documents
                 HomeDocuments(key: ValueKey('documents$_recarga')),
                 // 3. Comunicados        -> Notices
-                HomeNotices(key: ValueKey('notices$_recarga')),
+                ConAcceso(
+                  permiso: Acceso.comunicados,
+                  child: HomeNotices(key: ValueKey('notices$_recarga')),
+                ),
                 // 8. Noticias           -> LatestNews
-                HomeLatestNews(key: ValueKey('news$_recarga')),
+                ConAcceso(
+                  permiso: Acceso.noticias,
+                  child: HomeLatestNews(key: ValueKey('news$_recarga')),
+                ),
               ],
             ),
           ),
 
-          // Reloj de los países: pestaña fija a la derecha, a media altura
           // Notificaciones + reloj de los países, fijos a la derecha
           Align(
-            alignment: Alignment.centerRight, // deja la alineación que tengas
+            alignment: Alignment.centerRight,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

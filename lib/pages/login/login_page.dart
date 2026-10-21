@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import '../../components/custom_button.dart';
 import '../../components/custom_checkbox.dart';
 import '../../components/custom_input.dart';
+import '../../services/accesos_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/biometria_service.dart';
 import '../../theme/theme.dart';
 import '../../widgets/snackbar_helper.dart';
 import '../home/home_page.dart';
+import 'recuperar_password_dialog.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -53,6 +55,8 @@ class _LoginPageState extends State<LoginPage> {
       final valid = await AuthService.validateToken();
       if (!mounted) return;
       if (valid) {
+        await AccesosService.cargar();
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const HomePage()),
@@ -196,6 +200,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _irAHome() async {
+    await AccesosService.cargar();
     final user = await AuthService.getUser();
     if (!mounted) return;
     SnackbarHelper.show(
@@ -360,7 +365,24 @@ class _LoginPageState extends State<LoginPage> {
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _login(),
                 ),
-                const SizedBox(height: 20),
+
+                // ¿Olvidaste tu contraseña? (a la derecha, bajo la contraseña)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                    ),
+                    onPressed: _loading
+                        ? null
+                        : () => mostrarRecuperarPassword(
+                              context,
+                              emailInicial: _emailController.text,
+                            ),
+                    child: const Text('¿Olvidaste tu contraseña?'),
+                  ),
+                ),
+                const SizedBox(height: 4),
 
                 // Recordar email y contraseña
                 Row(

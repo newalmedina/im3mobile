@@ -4,11 +4,15 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'pages/login/login_page.dart';
 import 'theme/theme.dart';
+import 'package:im3_mobile_app/services/accesos_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Nombres de meses y días en español (calendario y DateFormat)
   await initializeDateFormatting('es_ES');
+
+  WidgetsFlutterBinding.ensureInitialized();
+  AccesosService.iniciarObservador();
   runApp(const MyApp());
 }
 
