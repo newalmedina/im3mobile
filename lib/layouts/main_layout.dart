@@ -27,6 +27,9 @@ import '../theme/theme.dart';
 /// abre una página sin permiso (por ejemplo, se lo han quitado en la
 /// intranet) se muestra un aviso en lugar del contenido.
 ///
+/// Al abrir el menú, la opción de la página actual se centra sola
+/// si queda fuera de la vista.
+///
 /// Uso en una página:
 ///   return MainLayout(currentRoute: 'inicio', child: ...);
 class MainLayout extends StatefulWidget {
@@ -48,6 +51,9 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   /// Usuario tal cual está guardado (sin modelo)
   Map<String, dynamic>? _user;
+
+  /// Marca la opción de la página actual, para centrarla al abrir el menú
+  final GlobalKey _seleccionadoKey = GlobalKey();
 
   // =========================================================
   // MENÚ: para añadir una pantalla, añade una entrada aquí.
@@ -206,6 +212,20 @@ class _MainLayoutState extends State<MainLayout> {
     );
   }
 
+  /// Al abrir el menú, centra la opción seleccionada si está fuera de la vista
+  void _centrarSeleccionado() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _seleccionadoKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.5, // 0.5 = en el centro de la lista
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   // =========================================================
   // SESIÓN
   // =========================================================
@@ -265,6 +285,9 @@ class _MainLayoutState extends State<MainLayout> {
     return Scaffold(
       backgroundColor: AppColors.background,
       drawer: _drawer(),
+      onDrawerChanged: (abierto) {
+        if (abierto) _centrarSeleccionado();
+      },
 
       // HEADER
       appBar: AppBar(
@@ -443,22 +466,29 @@ class _MainLayoutState extends State<MainLayout> {
   Widget _item(Map<String, dynamic> item) {
     final selected = item['route'] == widget.currentRoute;
     return Padding(
+      // La opción de la página actual lleva la key para poder centrarla
+      key: selected ? _seleccionadoKey : null,
       padding: const EdgeInsets.only(bottom: 4),
-      child: ListTile(
-        selected: selected,
-        selectedTileColor: AppColors.primary,
-        selectedColor: Colors.white,
-        iconColor: AppColors.primary,
-        textColor: AppColors.text,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        leading: Icon(item['icon'] as IconData),
-        title: Text(
-          item['title'] as String,
-          style: TextStyle(
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+      // Material propio: el fondo azul se mueve con la opción y la lista
+      // lo recorta al hacer scroll (antes se pintaba sobre todo el Drawer)
+      child: Material(
+        color: selected ? AppColors.primary : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          selected: selected,
+          selectedColor: Colors.white,
+          iconColor: AppColors.primary,
+          textColor: AppColors.text,
+          leading: Icon(item['icon'] as IconData),
+          title: Text(
+            item['title'] as String,
+            style: TextStyle(
+              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
+          onTap: () => _navigate(item),
         ),
-        onTap: () => _navigate(item),
       ),
     );
   }
