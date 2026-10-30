@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 
 // Ajusta estas dos constantes a tu configuración (o usa las que ya tengas en tu proyecto)
 const String baseBackUrl = 'https://dev.im3solutions.com';
-const String baseFrontUrl = 'https://dev.im3solutions.com/';
+const String baseFrontUrl = 'https://intranet.ingenieros-im3.com/';
 
 /// Llama al mismo endpoint que la web.
 /// Devuelve true si el backend aceptó la petición.
@@ -27,7 +27,10 @@ Future<bool> solicitarResetPassword(String email) async {
 }
 
 /// Muestra el diálogo para pedir el email y enviar el correo de recuperación.
-Future<void> mostrarRecuperarPassword(BuildContext context, {String? emailInicial}) {
+Future<void> mostrarRecuperarPassword(
+  BuildContext context, {
+  String? emailInicial,
+}) {
   final controller = TextEditingController(text: emailInicial ?? '');
   bool cargando = false;
   String? error;
@@ -46,7 +49,9 @@ Future<void> mostrarRecuperarPassword(BuildContext context, {String? emailInicia
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Escribe tu email y te enviaremos un enlace para cambiar la contraseña.'),
+                  const Text(
+                    'Escribe tu email y te enviaremos un enlace para cambiar la contraseña.',
+                  ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: controller,
@@ -91,7 +96,8 @@ Future<void> mostrarRecuperarPassword(BuildContext context, {String? emailInicia
                             if (ok) {
                               enviado = true;
                             } else {
-                              error = 'No se pudo enviar el correo. Revisa el email e inténtalo de nuevo.';
+                              error =
+                                  'No se pudo enviar el correo. Revisa el email e inténtalo de nuevo.';
                             }
                           });
                         },

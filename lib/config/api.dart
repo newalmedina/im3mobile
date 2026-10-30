@@ -2,7 +2,8 @@ class ApiConfig {
   // =========================================================
   // HOST COMÚN (cambia solo esto para pasar de entorno)
   // =========================================================
-  static const String host = "https://dev.im3solutions.com/"; // PRODUCCIÓN
+  static const String host =
+      "https://intranet.ingenieros-im3.com/"; // PRODUCCIÓN
   // static const String host = "http://local.com/"; // LOCAL
 
   // =========================================================
