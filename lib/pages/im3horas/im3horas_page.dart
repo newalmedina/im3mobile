@@ -76,8 +76,8 @@ class _Im3HorasPageState extends State<Im3HorasPage> {
       final tipos = await HorasService.getMes(mes);
       if (!mounted || mesYear(mes) != mesYear(_mesVisible)) return;
       setState(() => _tiposMes = tipos);
-    } on HorasException catch (e) {
-      _aviso(e.mensaje);
+    } catch (e) {
+      _aviso(e is HorasException ? e.mensaje : 'Error al cargar el mes.');
     }
   }
 
@@ -98,13 +98,14 @@ class _Im3HorasPageState extends State<Im3HorasPage> {
         _eventos = r[1];
         _cargandoDia = false;
       });
-    } on HorasException catch (e) {
+    } catch (e) {
+      // Cualquier error (no solo HorasException) quita el "cargando"
       if (!mounted || peticion != _peticionDia) return;
       setState(() {
         _turnos = [];
         _eventos = [];
         _cargandoDia = false;
-        _errorDia = e.mensaje;
+        _errorDia = e is HorasException ? e.mensaje : 'Error al cargar el día.';
       });
     }
   }
@@ -204,38 +205,72 @@ class _Im3HorasPageState extends State<Im3HorasPage> {
     // Las del usuario o, si no ha guardado ninguna, las de por defecto
     final plantillas = await PlantillasService.cargar();
     if (!mounted) return;
-    final seleccion = await showDialog<List<List<int>>>(
+    final existentes = [..._turnos];
+    final resultado = await showDialog<PlantillaResultado>(
       context: context,
       builder: (_) => PlantillaDialog(
         dia: dia,
         plantillas: plantillas,
-        validar: (sel) => HorasReglas.validarVarios(
+        turnosDelDia: [
+          for (final t in existentes) [t['inicio'] as int, t['fin'] as int],
+        ],
+        validar: (sel, reemplazar) => HorasReglas.validarVarios(
           dia: dia,
           nuevos: sel,
-          turnos: _turnos,
+          // Los turnos del día se sustituyen, así que no cuentan
+          turnos: reemplazar ? <Map<String, dynamic>>[] : existentes,
           eventos: _eventos,
         ),
       ),
     );
-    if (seleccion == null || seleccion.isEmpty || !mounted) return;
+    if (resultado == null || resultado.seleccion.isEmpty || !mounted) return;
+
+    bool igual(Map<String, dynamic> t, List<int> s) =>
+        t['inicio'] == s[0] && t['fin'] == s[1];
+
+    // Normal y verano no se mezclan: se quitan los turnos del día que no
+    // estén en la selección y se crean los que falten. Los iguales se dejan.
+    final borrar = [
+      for (final t in existentes)
+        if (!resultado.seleccion.any((s) => igual(t, s))) t,
+    ];
+    final crear = [
+      for (final s in resultado.seleccion)
+        if (!existentes.any((t) => igual(t, s))) s,
+    ];
+    if (borrar.isEmpty && crear.isEmpty) {
+      _hecho('El día ya tenía ese horario');
+      return;
+    }
 
     setState(() => _cargandoDia = true);
+
+    for (final t in borrar) {
+      final error = await _guardar(() => HorasService.eliminar('${t['id']}'));
+      if (error != null) {
+        if (!mounted) return;
+        _aviso('No se pudo sustituir el turno: $error');
+        _recargar();
+        return;
+      }
+    }
+
     var creados = 0;
-    for (final t in seleccion) {
+    for (final t in crear) {
       final error = await _guardar(() => HorasService.crear(dia, t[0], t[1]));
       if (error != null) {
         if (!mounted) return;
         _aviso(
           creados == 0
               ? error
-              : 'Se crearon $creados de ${seleccion.length} turnos. $error',
+              : 'Se crearon $creados de ${crear.length} turnos. $error',
         );
         _recargar();
         return;
       }
       creados++;
     }
-    _hecho(creados == 1 ? 'Turno creado' : '$creados turnos creados');
+    _hecho(borrar.isEmpty ? (creados == 1 ? 'Turno creado' : '$creados turnos creados') : 'Horario sustituido');
   }
 
   Future<void> _editarTurno(Map<String, dynamic> t) async {
@@ -294,6 +329,8 @@ class _Im3HorasPageState extends State<Im3HorasPage> {
       return null;
     } on HorasException catch (e) {
       return e.mensaje;
+    } catch (e) {
+      return 'Error inesperado: $e';
     }
   }
 
@@ -604,7 +641,7 @@ class _Im3HorasPageState extends State<Im3HorasPage> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            onPressed: restante > 0 ? _generarPlantilla : null,
+            onPressed: _generarPlantilla,
             icon: const Icon(Icons.auto_awesome_outlined),
             label: const Text(
               'Generar plantilla',

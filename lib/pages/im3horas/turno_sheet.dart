@@ -51,7 +51,7 @@ class _TurnoSheetState extends State<TurnoSheet> {
   String? get _error => widget.validar(_inicio, _fin);
 
   Future<void> _elegir({required bool esInicio}) async {
-    final actual = esInicio ? _inicio : _fin;
+    final actual = (esInicio ? _inicio : _fin).clamp(0, 23 * 60 + 59);
     final hora = await showTimePicker(
       context: context,
       helpText: esInicio ? 'Hora de entrada' : 'Hora de salida',
@@ -61,7 +61,7 @@ class _TurnoSheetState extends State<TurnoSheet> {
         child: child!,
       ),
     );
-    if (hora == null) return;
+    if (hora == null || !mounted) return;
     setState(() {
       _errorServidor = null;
       final m = hora.hour * 60 + hora.minute;

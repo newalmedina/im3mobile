@@ -13,7 +13,8 @@ class HorasException implements Exception {
 /// Si algo falla lanza HorasException con un mensaje para el usuario.
 class HorasService {
   /// Tipos de cada día del mes: {'2026-10-15': {'laboral', 'PER'}, ...}
-  static Future<Map<String, Set<String>>> getMes(DateTime mes) async {
+  static Future<Map<String, Set<String>>> getMes(DateTime mes) =>
+      _seguro(() async {
     final res = await ApiService.get(
       _url(ApiConfig.horasMes, {'mesYear': mesYear(mes)}),
       auth: true,
@@ -26,38 +27,59 @@ class HorasService {
       dias.putIfAbsent(fecha.substring(0, 10), () => {}).add('${item['tipo']}');
     }
     return dias;
-  }
+  });
 
   /// Turnos del día, tal cual vienen del servidor, más tres claves
   /// que añade este servicio para no tener que calcularlas en la pantalla:
   ///   'inicio'  -> minutos desde las 00:00 (de hora_inicio)
   ///   'fin'     -> minutos desde las 00:00 (de hora_final)
   ///   'minutos' -> duración del turno
-  static Future<List<Map<String, dynamic>>> getTurnos(DateTime dia) async {
+  static Future<List<Map<String, dynamic>>> getTurnos(DateTime dia) =>
+      _seguro(() async {
     final res = await ApiService.get(
       _url(ApiConfig.horasTurnosDia, {'fecha': fechaIso(dia)}),
       auth: true,
     );
-    final turnos = _mapas(res);
-    for (final t in turnos) {
-      t['inicio'] = horaAMinutos('${t['hora_inicio']}');
-      t['fin'] = horaAMinutos('${t['hora_final']}');
-      t['minutos'] = (t['fin'] as int) - (t['inicio'] as int);
+    final turnos = <Map<String, dynamic>>[];
+    for (final t in _mapas(res)) {
+      final inicio = _aMinutos(t['hora_inicio']);
+      final fin = _aMinutos(t['hora_final']);
+      // Un turno con horas raras o vacías no debe tumbar la pantalla
+      if (inicio == null || fin == null) continue;
+      t['inicio'] = inicio;
+      t['fin'] = fin;
+      t['minutos'] = fin - inicio;
+      turnos.add(t);
     }
     turnos.sort((a, b) => (a['inicio'] as int).compareTo(b['inicio'] as int));
     return turnos;
+  });
+
+  /// Acepta "08:00", "08:00:00" o "1970-01-01T08:00:00". Null si no se entiende.
+  static int? _aMinutos(dynamic valor) {
+    if (valor == null) return null;
+    final m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(
+      valor.toString().split('T').last,
+    );
+    if (m == null) return null;
+    final h = int.parse(m.group(1)!);
+    final min = int.parse(m.group(2)!);
+    if (h > 23 || min > 59) return null;
+    return h * 60 + min;
   }
 
   /// Vacaciones, permisos, bajas, festivos del día (tal cual del servidor)
-  static Future<List<Map<String, dynamic>>> getEventos(DateTime dia) async {
+  static Future<List<Map<String, dynamic>>> getEventos(DateTime dia) =>
+      _seguro(() async {
     final res = await ApiService.get(
       _url(ApiConfig.horasEventosDia, {'fecha': fechaIso(dia)}),
       auth: true,
     );
     return _mapas(res);
-  }
+  });
 
-  static Future<void> crear(DateTime dia, int inicio, int fin) async {
+  static Future<void> crear(DateTime dia, int inicio, int fin) =>
+      _seguro(() async {
     final d = fechaIso(
       dia,
     ).replaceAll('-', '/'); // el backend espera YYYY/MM/DD
@@ -67,24 +89,26 @@ class HorasService {
       auth: true,
     );
     _comprobar(res);
-  }
+  });
 
-  static Future<void> actualizar(String id, int inicio, int fin) async {
+  static Future<void> actualizar(String id, int inicio, int fin) =>
+      _seguro(() async {
     final res = await ApiService.patch(
       _url('${ApiConfig.horasActualizar}$id'),
       body: _cuerpo(inicio, fin),
       auth: true,
     );
     _comprobar(res);
-  }
+  });
 
-  static Future<void> eliminar(String id) async {
+  static Future<void> eliminar(String id) =>
+      _seguro(() async {
     final res = await ApiService.delete(
       _url('${ApiConfig.horasEliminar}$id'),
       auth: true,
     );
     _comprobar(res);
-  }
+  });
 
   // ------------------------------------------------------------------
 
@@ -105,6 +129,18 @@ class HorasService {
   static List<Map<String, dynamic>> _mapas(Map<String, dynamic> res) => _lista(
     res,
   ).whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+
+  /// Cualquier fallo que no sea nuestro (JSON raro, timeout, tipos...)
+  /// se convierte en HorasException para que la pantalla lo pueda mostrar.
+  static Future<T> _seguro<T>(Future<T> Function() llamada) async {
+    try {
+      return await llamada();
+    } on HorasException {
+      rethrow;
+    } catch (e) {
+      throw HorasException('Error inesperado: $e');
+    }
+  }
 
   static List _lista(Map<String, dynamic> res) {
     _comprobar(res);

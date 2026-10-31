@@ -9,20 +9,40 @@ import 'plantilla_editor_sheet.dart';
 /// y la de verano, desmarcar algún turno y valida en vivo antes de insertar.
 /// Con el lápiz se edita la plantilla y se guarda en el móvil.
 ///
-/// Devuelve la lista de turnos elegidos ([inicio, fin] en minutos)
-/// o null si se cancela.
+/// Normal y verano son excluyentes: un día tiene los turnos de una o de
+/// otra, nunca mezclados. Por eso generar la plantilla SUSTITUYE los turnos
+/// que ya tenga el día (los que coinciden exactamente se dejan como están).
+///
+/// Devuelve un [PlantillaResultado] o null si se cancela.
+class PlantillaResultado {
+  /// Tramos elegidos ([inicio, fin] en minutos)
+  final List<List<int>> seleccion;
+
+  /// true = el día tenía turnos y se sustituyen por la selección
+  final bool reemplazar;
+
+  const PlantillaResultado(this.seleccion, this.reemplazar);
+}
+
 class PlantillaDialog extends StatefulWidget {
   final DateTime dia;
 
   /// Plantillas del usuario (o las de por defecto)
   final Plantillas plantillas;
-  final String? Function(List<List<int>> seleccion) validar;
+
+  /// Turnos que ya tiene el día (se sustituirán)
+  final List<List<int>> turnosDelDia;
+
+  /// Valida la selección. Con [reemplazar] = true no se tienen en cuenta
+  /// los turnos que ya hay en el día.
+  final String? Function(List<List<int>> seleccion, bool reemplazar) validar;
 
   const PlantillaDialog({
     super.key,
     required this.dia,
     required this.plantillas,
     required this.validar,
+    this.turnosDelDia = const [],
   });
 
   @override
@@ -31,20 +51,75 @@ class PlantillaDialog extends StatefulWidget {
 
 class _PlantillaDialogState extends State<PlantillaDialog> {
   late Plantillas _plantillas = widget.plantillas;
-  bool _verano = false;
+
+  /// Se abre en la plantilla a la que pertenecen los turnos del día
+  late bool _verano = _esDeVerano();
   late List<List<int>> _turnos = _plantillas.de(_verano);
-  late List<bool> _marcados = List.filled(_turnos.length, true);
+  late List<bool> _marcados = _marcadoInicial(_turnos);
 
   List<List<int>> get _seleccion => [
     for (var i = 0; i < _turnos.length; i++)
       if (_marcados[i]) _turnos[i],
   ];
 
+  /// Los turnos que ya hay en el día se sustituyen siempre
+  bool get _reemplazar => widget.turnosDelDia.isNotEmpty;
+
+  static bool _igual(List<int> a, List<int> b) => a[0] == b[0] && a[1] == b[1];
+
+  /// ¿Los turnos del día son de la plantilla de verano?
+  bool _esDeVerano() {
+    bool coincide(List<List<int>> tramos) => widget.turnosDelDia.any(
+      (t) => tramos.any((p) => _igual(p, t)),
+    );
+    return coincide(_plantillas.de(true)) && !coincide(_plantillas.de(false));
+  }
+
+  /// Turnos actuales del día que desaparecerán con la selección
+  List<List<int>> get _seQuitan => [
+    for (final t in widget.turnosDelDia)
+      if (!_seleccion.any((s) => _igual(s, t))) t,
+  ];
+
+  static bool _seSolapan(List<int> a, List<int> b) =>
+      a[0] < b[1] && b[0] < a[1];
+
+  /// Cada vez que se abre (o se cambia de plantilla) se comprueba qué tramos
+  /// caben: se van marcando en orden y solo si la selección sigue siendo
+  /// válida (sin solapes entre sí, sin festivos/permisos, sin pasar el
+  /// límite). Los turnos actuales del día no cuentan porque se sustituyen.
+  List<bool> _marcadoInicial(List<List<int>> turnos) {
+    final marcados = List.filled(turnos.length, false);
+    final elegidos = <List<int>>[];
+    for (var i = 0; i < turnos.length; i++) {
+      final prueba = [...elegidos, turnos[i]];
+      if (widget.validar(prueba, _reemplazar) == null) {
+        marcados[i] = true;
+        elegidos.add(turnos[i]);
+      }
+    }
+    return marcados;
+  }
+
+  /// Al marcar un tramo se desmarcan los que se solapan con él
+  /// (son alternativos: o uno u otro)
+  void _marcar(int i, bool valor) {
+    setState(() {
+      _marcados[i] = valor;
+      if (!valor) return;
+      for (var j = 0; j < _turnos.length; j++) {
+        if (j != i && _marcados[j] && _seSolapan(_turnos[i], _turnos[j])) {
+          _marcados[j] = false;
+        }
+      }
+    });
+  }
+
   void _cambiarPlantilla(bool verano) {
     setState(() {
       _verano = verano;
       _turnos = _plantillas.de(verano);
-      _marcados = List.filled(_turnos.length, true);
+      _marcados = _marcadoInicial(_turnos);
     });
   }
 
@@ -79,14 +154,15 @@ class _PlantillaDialogState extends State<PlantillaDialog> {
   @override
   Widget build(BuildContext context) {
     final seleccion = _seleccion;
-    final error = widget.validar(seleccion);
+    final error = widget.validar(seleccion, _reemplazar);
     final total = seleccion.fold<int>(0, (s, t) => s + t[1] - t[0]);
 
     return AlertDialog(
       title: const Text('Generar plantilla'),
       content: SizedBox(
         width: 340,
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -139,7 +215,7 @@ class _PlantillaDialogState extends State<PlantillaDialog> {
             for (var i = 0; i < _turnos.length; i++)
               CheckboxListTile(
                 value: _marcados[i],
-                onChanged: (v) => setState(() => _marcados[i] = v ?? false),
+                onChanged: (v) => _marcar(i, v ?? false),
                 activeColor: AppColors.primary,
                 contentPadding: EdgeInsets.zero,
                 controlAffinity: ListTileControlAffinity.leading,
@@ -165,6 +241,31 @@ class _PlantillaDialogState extends State<PlantillaDialog> {
                 ),
               ],
             ),
+            if (_seQuitan.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.swap_horiz, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Se sustituirá${_seQuitan.length == 1 ? '' : 'n'} '
+                        '${_seQuitan.map((t) => '${minutosAHora(t[0])}–${minutosAHora(t[1])}').join(', ')} '
+                        'por el horario ${_verano ? 'de verano' : 'normal'}.',
+                        style: TextStyle(color: Colors.grey[800]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (error != null) ...[
               const SizedBox(height: 12),
               Container(
@@ -190,6 +291,7 @@ class _PlantillaDialogState extends State<PlantillaDialog> {
             ],
           ],
         ),
+        ),
       ),
       actions: [
         TextButton(
@@ -198,11 +300,16 @@ class _PlantillaDialogState extends State<PlantillaDialog> {
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-          onPressed: error == null
-              ? () => Navigator.pop(context, seleccion)
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primary,
+          ),
+          onPressed: error == null && seleccion.isNotEmpty
+              ? () => Navigator.pop(
+                  context,
+                  PlantillaResultado(seleccion, _reemplazar),
+                )
               : null,
-          child: const Text('Insertar'),
+          child: Text(_seQuitan.isNotEmpty ? 'Sustituir' : 'Insertar'),
         ),
       ],
     );

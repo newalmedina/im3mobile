@@ -47,12 +47,12 @@ class _PlantillaEditorSheetState extends State<PlantillaEditorSheet> {
 
   int get _total => _tramos.fold(0, (s, t) => s + t[1] - t[0]);
 
-  /// Mismas reglas básicas que un turno: 07:00–19:00, fin > inicio, sin solapes
+  /// Reglas del editor: 07:00–19:00, fin > inicio y sin tramos repetidos.
+  /// Los solapes SÍ se permiten: son horarios alternativos (unos días
+  /// 07:15–15:15, otros 08:00–16:00). El solape se comprueba al insertar.
   String? get _error {
     if (_tramos.isEmpty) return 'Añade al menos un tramo.';
-    final orden = [..._tramos]..sort((a, b) => a[0].compareTo(b[0]));
-    for (var i = 0; i < orden.length; i++) {
-      final t = orden[i];
+    for (final t in _tramos) {
       if (t[0] < HorasReglas.horaMinima || t[1] > HorasReglas.horaMaxima) {
         return 'Los tramos tienen que estar entre '
             '${minutosAHora(HorasReglas.horaMinima)} y '
@@ -62,17 +62,32 @@ class _PlantillaEditorSheetState extends State<PlantillaEditorSheet> {
         return 'En el tramo ${minutosAHora(t[0])}, la salida tiene que ser '
             'posterior a la entrada.';
       }
-      if (i > 0 && t[0] < orden[i - 1][1]) {
-        return 'Los tramos ${minutosAHora(orden[i - 1][0])}–'
-            '${minutosAHora(orden[i - 1][1])} y ${minutosAHora(t[0])}–'
-            '${minutosAHora(t[1])} se solapan.';
+    }
+    for (var i = 0; i < _tramos.length; i++) {
+      for (var j = i + 1; j < _tramos.length; j++) {
+        if (_tramos[i][0] == _tramos[j][0] && _tramos[i][1] == _tramos[j][1]) {
+          return 'El tramo ${minutosAHora(_tramos[i][0])}–'
+              '${minutosAHora(_tramos[i][1])} está repetido.';
+        }
       }
     }
     return null;
   }
 
+  /// Hay tramos que se pisan entre sí (solo informativo, no bloquea)
+  bool get _haySolapes {
+    for (var i = 0; i < _tramos.length; i++) {
+      for (var j = i + 1; j < _tramos.length; j++) {
+        if (_tramos[i][0] < _tramos[j][1] && _tramos[j][0] < _tramos[i][1]) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   Future<void> _elegir(int i, {required bool esInicio}) async {
-    final actual = _tramos[i][esInicio ? 0 : 1];
+    final actual = (_tramos[i][esInicio ? 0 : 1]).clamp(0, 23 * 60 + 59);
     final hora = await showTimePicker(
       context: context,
       helpText: esInicio ? 'Hora de entrada' : 'Hora de salida',
@@ -82,7 +97,7 @@ class _PlantillaEditorSheetState extends State<PlantillaEditorSheet> {
         child: child!,
       ),
     );
-    if (hora == null) return;
+    if (hora == null || !mounted) return;
     setState(() => _tramos[i][esInicio ? 0 : 1] = hora.hour * 60 + hora.minute);
   }
 
@@ -175,16 +190,39 @@ class _PlantillaEditorSheetState extends State<PlantillaEditorSheet> {
             ),
           ),
           const Divider(),
-          Row(
-            children: [
-              const Text('Total'),
-              const Spacer(),
-              Text(
-                '${minutosAHora(_total < 0 ? 0 : _total)} h',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+          if (_haySolapes)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
               ),
-            ],
-          ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Hay tramos que se solapan: se tratarán como horarios '
+                      'alternativos. Al generar la plantilla elegirás cuál usar.',
+                      style: TextStyle(color: Colors.grey[800]),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Row(
+              children: [
+                const Text('Total'),
+                const Spacer(),
+                Text(
+                  '${minutosAHora(_total < 0 ? 0 : _total)} h',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
 
           if (error != null) ...[
             const SizedBox(height: 12),
